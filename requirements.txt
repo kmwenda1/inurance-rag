@@ -9,7 +9,7 @@ streamlit>=1.38.0
 pdfplumber==0.11.4
 
 # Embeddings (converts text to meaning-numbers, runs locally, free)
-sentence-transformers==3.1.1
+fastembed==0.3.1
 
 # Vector database (stores and searches meaning-numbers, runs locally, free)
 chromadb==0.5.15

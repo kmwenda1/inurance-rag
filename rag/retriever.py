@@ -15,7 +15,7 @@
 #   even though the words are different.
 # ─────────────────────────────────────────────────────────
 
-from rag.embedder import EMBEDDING_MODEL, get_collection
+from rag.embedder import embed_texts, get_collection
 
 
 # ── Main retrieval function ────────────────────────────────────────────────────
@@ -62,10 +62,7 @@ def retrieve(query: str, top_k: int = 8) -> list[dict]:
     # Because our stored chunks are embeddings (meaning-numbers).
     # To compare the query against the chunks, we need them in the same
     # number format. It's like translating everything into the same language.
-    query_embedding = EMBEDDING_MODEL.encode(
-        query,
-        normalize_embeddings=True
-    ).tolist()
+    query_embedding = embed_texts([query])[0]
 
     # Search ChromaDB for similar chunks
     # include= tells ChromaDB what data to return alongside the chunk IDs
