@@ -3,11 +3,6 @@
 # Install with: pip install -r requirements.txt
 # ─────────────────────────────────────────────────────────
 
-# PyTorch CPU-only — much smaller than the GPU version (230MB vs 554MB)
-# We don't need GPU for inference. This installs from PyTorch's own server.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.0+cpu
-
 # UI
 streamlit==1.38.0
 
