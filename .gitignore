@@ -1,0 +1,19 @@
+# Never push these — ever
+.env
+venv/
+
+# Vector database (re-indexes on deploy)
+data/chroma_db/
+
+# Uploaded files (users upload their own)
+data/uploaded/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
