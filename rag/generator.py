@@ -17,6 +17,7 @@
 # ─────────────────────────────────────────────────────────
 
 import os
+import logging
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -27,9 +28,8 @@ from dotenv import load_dotenv
 #   they don't get your key. NEVER hardcode API keys into code.
 load_dotenv()
 
-# Initialize the Groq client with your API key
-# The key is read from the GROQ_API_KEY variable in your .env file
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+logger = logging.getLogger(__name__)
+_groq_client = None
 
 # The model we're using on Groq
 # WHY qwen/qwen3.8-27b?
@@ -38,6 +38,20 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 #   - Fast on Groq hardware, free tier
 #   - Handles technical/legal document Q&A well
 MODEL = "qwen/qwen3.8-27b"
+
+
+def get_groq_client() -> Groq:
+    """Lazily initialize Groq client so app startup does not require API key."""
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("missing_api_key")
+
+    _groq_client = Groq(api_key=api_key)
+    return _groq_client
 
 
 # ── Build the system prompt ───────────────────────────────────────────────────
@@ -122,7 +136,7 @@ Based ONLY on the above excerpts, please answer this question:
 
     # Send to Groq API
     try:
-        response = groq_client.chat.completions.create(
+        response = get_groq_client().chat.completions.create(
             model=MODEL,
             messages=[
                 {
@@ -154,19 +168,17 @@ Based ONLY on the above excerpts, please answer this question:
         }
 
     except Exception as e:
-        # Something went wrong with the API call
-        # We return a structured error so the UI can handle it gracefully
-        error_msg = str(e)
+        error_key = str(e).lower()
+        logger.warning("Answer generation failed: %s", type(e).__name__)
 
-        # Common errors and helpful messages
-        if "api_key" in error_msg.lower() or "authentication" in error_msg.lower():
-            friendly_error = "API key error: Please check your GROQ_API_KEY in the .env file."
-        elif "rate_limit" in error_msg.lower():
-            friendly_error = "Rate limit reached: Groq free tier limit hit. Wait a minute and try again."
-        elif "model" in error_msg.lower():
-            friendly_error = f"Model error: The model '{MODEL}' may not be available. Check Groq's model list."
+        if error_key == "missing_api_key" or "api_key" in error_key or "authentication" in error_key:
+            friendly_error = "Missing or invalid API key. Add GROQ_API_KEY in your environment and try again."
+        elif "rate_limit" in error_key:
+            friendly_error = "Rate limit reached. Please wait and try again."
+        elif "model" in error_key:
+            friendly_error = "Model is unavailable right now. Please try again later."
         else:
-            friendly_error = f"API error: {error_msg}"
+            friendly_error = "Unable to reach the answer provider right now. Please try again."
 
         return {
             "answer":  f"Sorry, I couldn't generate an answer. {friendly_error}",

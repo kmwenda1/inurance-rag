@@ -23,7 +23,12 @@ import streamlit as st
 from rag.ingest import ingest_pdf
 from rag.embedder import store_chunks, chunk_already_exists, get_collection_stats
 from rag.retriever import retrieve_with_confidence
-from rag.generator import generate_answer, format_sources
+from rag.generator import generate_answer
+from rag.app_utils import (
+    build_safe_upload_path,
+    get_max_upload_size_bytes,
+    validate_upload,
+)
 
 # ── Page configuration ─────────────────────────────────────────────────────────
 # Must be the first Streamlit call in the file
@@ -100,21 +105,27 @@ with st.sidebar:
     st.markdown("Upload PDFs to build your searchable knowledge base.")
     st.divider()
 
+    max_upload_size_bytes = get_max_upload_size_bytes()
+    max_upload_size_mb = max_upload_size_bytes // (1024 * 1024)
+
     # File uploader
     uploaded_file = st.file_uploader(
         "Upload a PDF",
         type=["pdf"],
-        help="Supported: text-based PDFs. Scanned PDFs may have lower accuracy."
+        help=f"Supported: text-based PDFs. Scanned PDFs may have lower accuracy. Max size: {max_upload_size_mb} MB."
     )
 
     if uploaded_file is not None:
         file_name = uploaded_file.name
+        is_valid_upload, upload_error = validate_upload(uploaded_file, max_upload_size_bytes)
+        if not is_valid_upload:
+            st.error(f"❌ {upload_error}")
 
         # Check if this file has already been indexed in this session
         if file_name in st.session_state.indexed_files:
             st.info(f"✅ **{file_name}** is already indexed.")
         else:
-            if st.button(f"📥 Index '{file_name}'", use_container_width=True):
+            if is_valid_upload and st.button(f"📥 Index '{file_name}'", use_container_width=True):
                 # ── File processing pipeline ──────────────────────────────────
                 #
                 # This is where all our modules connect:
@@ -125,15 +136,21 @@ with st.sidebar:
                 with st.spinner("Reading and indexing document..."):
                     # Step 1: Save file to disk
                     upload_dir = os.path.join("data", "uploaded")
-                    os.makedirs(upload_dir, exist_ok=True)
-                    file_path = os.path.join(upload_dir, file_name)
+                    file_path, display_name = build_safe_upload_path(upload_dir, file_name)
 
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
+                    try:
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                    except Exception:
+                        st.error("❌ Failed to save uploaded file. Please try again.")
+                        st.stop()
 
                     # Step 2: Ingest (extract text + chunk)
                     st.markdown("📄 Reading PDF...")
-                    ingest_result = ingest_pdf(file_path)
+                    ingest_result = ingest_pdf(file_path, source_name=display_name)
+                    if ingest_result.get("error"):
+                        st.error(f"❌ {ingest_result['error']}")
+                        st.stop()
 
                     # Warn if document appears to be scanned
                     if ingest_result["is_scanned"]:
@@ -155,15 +172,15 @@ with st.sidebar:
 
                         if new_chunks:
                             stored = store_chunks(new_chunks)
-                            st.session_state.indexed_files.append(file_name)
+                            st.session_state.indexed_files.append(display_name)
                             st.success(
-                                f"✅ **{file_name}** indexed!\n\n"
+                                f"✅ **{display_name}** indexed!\n\n"
                                 f"• {ingest_result['page_count']} pages read\n"
                                 f"• {stored} new chunks stored"
                             )
                         else:
                             st.info("This document (or all its chunks) is already in the database.")
-                            st.session_state.indexed_files.append(file_name)
+                            st.session_state.indexed_files.append(display_name)
 
     # Show indexed files
     st.divider()
@@ -289,24 +306,17 @@ else:
                 st.warning(entry["warning"])
 
             # Answer
-            st.markdown(
-                f'<div class="answer-box">{entry["answer"]}</div>',
-                unsafe_allow_html=True
-            )
+            with st.container(border=True):
+                st.write(entry["answer"])
 
             # Sources expander
             if entry["sources"]:
                 with st.expander(f"📄 View source passages ({len(entry['sources'])} found)"):
                     for j, source in enumerate(entry["sources"]):
-                        st.markdown(
-                            f'<div class="source-box">'
-                            f'<strong>{source["source"]} — Page {source["page_num"]}</strong>'
-                            f'<br><em>Relevance score: {source["score"]}</em>'
-                            f'<hr style="margin: 0.5rem 0">'
-                            f'{source["text"]}'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
+                        with st.container(border=True):
+                            st.caption(f'{source["source"]} — Page {source["page_num"]}')
+                            st.caption(f'Relevance score: {source["score"]}')
+                            st.write(source["text"])
                         if j < len(entry["sources"]) - 1:
                             st.markdown("")
 
