@@ -74,13 +74,13 @@ def retrieve(query: str, top_k: int = 8) -> list[dict]:
 
     # ChromaDB returns results wrapped in extra lists (because it supports
     # batch queries). We queried one query, so we take index [0].
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
-    distances = results["distances"][0]
+    documents = results.get("documents", [[]])[0] or []
+    metadatas = results.get("metadatas", [[]])[0] or []
+    distances = results.get("distances", [[]])[0] or []
 
     # Format into clean, readable dicts
     chunks = []
-    for i in range(len(documents)):
+    for i in range(min(len(documents), len(metadatas), len(distances))):
         # ChromaDB returns distances (lower = more similar).
         # We convert to a similarity score (higher = more relevant) for clarity.
         similarity_score = 1 - distances[i]
@@ -109,9 +109,9 @@ def retrieve_with_confidence(query: str, top_k: int = 8) -> dict:
         rather than letting the LLM hallucinate an answer.
 
     Confidence levels:
-        HIGH   (score > 0.75): Good match found, answer should be reliable
-        MEDIUM (score > 0.55): Decent match, verify the answer
-        LOW    (score ≤ 0.55): Poor match, database may not cover this topic
+        HIGH   (score >= 0.75): Good match found, answer should be reliable
+        MEDIUM (score >= 0.55): Decent match, verify the answer
+        LOW    (score < 0.55): Poor match, database may not cover this topic
 
     Returns:
         {
@@ -133,10 +133,10 @@ def retrieve_with_confidence(query: str, top_k: int = 8) -> dict:
 
     top_score = chunks[0]["score"]
 
-    if top_score > 0.25:
+    if top_score >= 0.75:
         confidence = "HIGH"
         warning = None
-    elif top_score > 0.15:
+    elif top_score >= 0.55:
         confidence = "MEDIUM"
         warning = "⚠️ Moderate confidence — verify against the source document."
     else:

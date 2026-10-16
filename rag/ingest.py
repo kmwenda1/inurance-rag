@@ -21,7 +21,7 @@ import pdfplumber
 
 # ── STEP 1: Extract text from a PDF ──────────────────────────────────────────
 
-def extract_text_from_pdf(file_path: str) -> list[dict]:
+def extract_text_from_pdf(file_path: str, source_name: str | None = None) -> list[dict]:
     """
     Opens a PDF and extracts the text from every page.
 
@@ -44,6 +44,7 @@ def extract_text_from_pdf(file_path: str) -> list[dict]:
         and exclusion lists — pdfplumber extracts these more cleanly.
     """
     pages = []
+    source = source_name or os.path.basename(file_path)
 
     # pdfplumber opens the file and gives us access to each page
     with pdfplumber.open(file_path) as pdf:
@@ -57,7 +58,7 @@ def extract_text_from_pdf(file_path: str) -> list[dict]:
                 pages.append({
                     "page_num": i + 1,                      # 1-indexed (page 1, not page 0)
                     "text": text.strip(),                   # remove extra whitespace
-                    "source": os.path.basename(file_path)  # just the filename, not the full path
+                    "source": source  # just the filename, not the full path
                 })
 
     return pages
@@ -168,7 +169,7 @@ def is_scanned_pdf(pages: list[dict]) -> bool:
 
 # ── Main ingest function: combines all steps ──────────────────────────────────
 
-def ingest_pdf(file_path: str) -> dict:
+def ingest_pdf(file_path: str, source_name: str | None = None) -> dict:
     """
     The main function you call from the outside.
     Takes a PDF file path, runs all three steps, returns everything.
@@ -187,21 +188,29 @@ def ingest_pdf(file_path: str) -> dict:
         result = ingest_pdf("data/uploaded/home_policy_2024.pdf")
         chunks = result["chunks"]
     """
-    filename = os.path.basename(file_path)
+    filename = source_name or os.path.basename(file_path)
 
-    # Step 1: Extract text
-    pages = extract_text_from_pdf(file_path)
+    try:
+        # Step 1: Extract text
+        pages = extract_text_from_pdf(file_path, source_name=filename)
 
-    # Step 2: Check if it's a scanned PDF
-    scanned = is_scanned_pdf(pages)
+        # Step 2: Check if it's a scanned PDF
+        scanned = is_scanned_pdf(pages)
 
-    # Step 3: Chunk the pages
-    chunks = chunk_pages(pages)
+        # Step 3: Chunk the pages
+        chunks = chunk_pages(pages)
+        error = None
+    except Exception:
+        pages = []
+        scanned = True
+        chunks = []
+        error = "Unable to read this PDF. Please upload a valid, non-corrupted PDF file."
 
     return {
         "chunks": chunks,
         "page_count": len(pages),
         "chunk_count": len(chunks),
         "is_scanned": scanned,
-        "filename": filename
+        "filename": filename,
+        "error": error,
     }
