@@ -27,9 +27,38 @@ from dotenv import load_dotenv
 #   they don't get your key. NEVER hardcode API keys into code.
 load_dotenv()
 
-# Initialize the Groq client with your API key
-# The key is read from the GROQ_API_KEY variable in your .env file
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+def get_groq_api_key() -> str | None:
+    """
+    Safely retrieves the GROQ_API_KEY from environment variables (.env)
+    or Streamlit secrets (when deployed to Streamlit Cloud).
+    """
+    # 1. First check environment variables
+    key = os.getenv("GROQ_API_KEY")
+    if key:
+        return key
+
+    # 2. Check Streamlit secrets if running under Streamlit
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
+            return st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
+
+    return None
+
+
+def get_groq_client(api_key: str | None = None) -> Groq:
+    """
+    Lazily initializes the Groq client so that module import does not fail
+    if the API key is not configured at startup.
+    """
+    key = api_key or get_groq_api_key()
+    if not key:
+        raise ValueError(
+            "GROQ_API_KEY is not set. Please add it to your .env file or Streamlit Cloud Secrets."
+        )
+    return Groq(api_key=key)
 
 # The model we're using on Groq
 # WHY qwen/qwen3.8-27b?
@@ -59,7 +88,7 @@ Remember: In insurance, a wrong answer can have real consequences. Be precise or
 
 # ── Main generation function ───────────────────────────────────────────────────
 
-def generate_answer(query: str, retrieved_chunks: list[dict]) -> dict:
+def generate_answer(query: str, retrieved_chunks: list[dict], api_key: str | None = None) -> dict:
     """
     Generates a cited answer to the user's question using the retrieved chunks.
 
@@ -122,7 +151,8 @@ Based ONLY on the above excerpts, please answer this question:
 
     # Send to Groq API
     try:
-        response = groq_client.chat.completions.create(
+        client = get_groq_client(api_key)
+        response = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {

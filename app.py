@@ -23,7 +23,7 @@ import streamlit as st
 from rag.ingest import ingest_pdf
 from rag.embedder import store_chunks, chunk_already_exists, get_collection_stats
 from rag.retriever import retrieve_with_confidence
-from rag.generator import generate_answer, format_sources
+from rag.generator import generate_answer, format_sources, get_groq_api_key
 
 # ── Page configuration ─────────────────────────────────────────────────────────
 # Must be the first Streamlit call in the file
@@ -98,6 +98,22 @@ if "chat_history" not in st.session_state:
 with st.sidebar:
     st.markdown("## 📁 Document Library")
     st.markdown("Upload PDFs to build your searchable knowledge base.")
+
+    # API key check
+    current_key = get_groq_api_key()
+    if not current_key:
+        st.warning("⚠️ Groq API key not found in secrets or .env")
+        user_key = st.text_input(
+            "Enter Groq API Key:",
+            type="password",
+            placeholder="gsk_...",
+            help="Get a free key at console.groq.com. Or add GROQ_API_KEY to Streamlit Secrets."
+        )
+        if user_key:
+            os.environ["GROQ_API_KEY"] = user_key.strip()
+            st.success("API key loaded for this session!")
+            st.rerun()
+
     st.divider()
 
     # File uploader
